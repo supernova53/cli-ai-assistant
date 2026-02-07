@@ -154,6 +154,39 @@ class QwenProvider(AIProvider):
         return response.choices[0].message.content.strip()
 
 
+class AmpCodeProvider(AIProvider):
+    """AmpCode local provider using OpenAI-compatible API."""
+    
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+        self.api_key = api_key or os.environ.get("AMPCODE_API_KEY", "your-api-key-1")
+        self.model = model
+        self.base_url = os.environ.get("AMPCODE_BASE_URL", "http://127.0.0.1:8317/v1")
+    
+    def generate_command(self, request: str, env: Environment) -> str:
+        """Generate command using AmpCode."""
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        
+        prompt = SYSTEM_PROMPT.format(
+            os_type=env.os_type,
+            shell=env.shell,
+            cwd=env.cwd,
+            aws_profile=env.aws_profile or "not set",
+            k8s_context=env.k8s_context or "not set",
+            request=request,
+        )
+        
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.1,
+        )
+        
+        return response.choices[0].message.content.strip()
+
+
 def get_provider(provider_name: Optional[str] = None) -> AIProvider:
     """Get an AI provider, auto-detecting based on available API keys."""
     if provider_name:
@@ -166,10 +199,24 @@ def get_provider(provider_name: Optional[str] = None) -> AIProvider:
             return MinimaxProvider()
         elif provider_lower == "qwen":
             return QwenProvider()
+        elif provider_lower == "ampcode":
+            return AmpCodeProvider()
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
     
-    # Auto-detect based on available API keys
+    # Auto-detect based on available API keys or local services
+    # Try AmpCode first (local, fast, free)
+    try:
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        result = sock.connect_ex(('127.0.0.1', 8317))
+        sock.close()
+        if result == 0:
+            return AmpCodeProvider()
+    except Exception:
+        pass
+    
     if os.environ.get("ANTHROPIC_API_KEY"):
         return AnthropicProvider()
     elif os.environ.get("OPENAI_API_KEY"):
