@@ -84,13 +84,88 @@ class AnthropicProvider(AIProvider):
         return response.content[0].text.strip()
 
 
+class MinimaxProvider(AIProvider):
+    """Minimax provider using OpenAI-compatible API."""
+    
+    def __init__(self, api_key: Optional[str] = None, model: str = "MiniMax-M2.1"):
+        self.api_key = api_key or os.environ.get("MINIMAX_API_KEY")
+        if not self.api_key:
+            raise ValueError("Minimax API key not found. Set MINIMAX_API_KEY environment variable.")
+        self.model = model
+        self.base_url = "https://api.minimax.io/v1"
+    
+    def generate_command(self, request: str, env: Environment) -> str:
+        """Generate command using Minimax."""
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        
+        prompt = SYSTEM_PROMPT.format(
+            os_type=env.os_type,
+            shell=env.shell,
+            cwd=env.cwd,
+            aws_profile=env.aws_profile or "not set",
+            k8s_context=env.k8s_context or "not set",
+            request=request,
+        )
+        
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.1,
+        )
+        
+        return response.choices[0].message.content.strip()
+
+
+class QwenProvider(AIProvider):
+    """Qwen provider using OpenAI-compatible API."""
+    
+    def __init__(self, api_key: Optional[str] = None, model: str = "qwen-coder-plus"):
+        self.api_key = api_key or os.environ.get("QWEN_API_KEY")
+        if not self.api_key:
+            raise ValueError("Qwen API key not found. Set QWEN_API_KEY environment variable.")
+        self.model = model
+        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    
+    def generate_command(self, request: str, env: Environment) -> str:
+        """Generate command using Qwen."""
+        from openai import OpenAI
+        
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        
+        prompt = SYSTEM_PROMPT.format(
+            os_type=env.os_type,
+            shell=env.shell,
+            cwd=env.cwd,
+            aws_profile=env.aws_profile or "not set",
+            k8s_context=env.k8s_context or "not set",
+            request=request,
+        )
+        
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
+            temperature=0.1,
+        )
+        
+        return response.choices[0].message.content.strip()
+
+
 def get_provider(provider_name: Optional[str] = None) -> AIProvider:
     """Get an AI provider, auto-detecting based on available API keys."""
     if provider_name:
-        if provider_name.lower() == "openai":
+        provider_lower = provider_name.lower()
+        if provider_lower == "openai":
             return OpenAIProvider()
-        elif provider_name.lower() in ("anthropic", "claude"):
+        elif provider_lower in ("anthropic", "claude"):
             return AnthropicProvider()
+        elif provider_lower == "minimax":
+            return MinimaxProvider()
+        elif provider_lower == "qwen":
+            return QwenProvider()
         else:
             raise ValueError(f"Unknown provider: {provider_name}")
     
@@ -99,7 +174,11 @@ def get_provider(provider_name: Optional[str] = None) -> AIProvider:
         return AnthropicProvider()
     elif os.environ.get("OPENAI_API_KEY"):
         return OpenAIProvider()
+    elif os.environ.get("MINIMAX_API_KEY"):
+        return MinimaxProvider()
+    elif os.environ.get("QWEN_API_KEY"):
+        return QwenProvider()
     else:
         raise ValueError(
-            "No API key found. Set either ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable."
+            "No API key found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, MINIMAX_API_KEY, or QWEN_API_KEY."
         )
